@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.warr.ferr.mapper.ChatMapper">
+
+	<resultMap type="com.warr.ferr.model.ChatroomMembers" id="ChatroomMembers">
+ 		<result property="chatroomId" column="chatroom_id"/>
+ 		<result property="userId" column="user_id"/>
+ 		<result property="chatroomName" column="chatroom_name"/>
+ 		<result property="status" column="status"/>
+ 		<result property="lastReadAt" column="last_read_at"/>
+ 	</resultMap>
+ 	
+	<!-- 모든 채팅방 리스트. 채팅방 생성시 사용 -->
+	<select id="findAllRooms"
+			resultType="com.warr.ferr.model.Chatrooms">
+		SELECT chatroom_id as chatroomId, name
+		FROM chatrooms
+	</select>
+	
+	<!-- userid 기준 리스트조회 -->
+	<select id="findAllRoomsByUserId"
+			parameterType="int"
+			resultMap="ChatroomMembers">
+		SELECT chatroom_id, user_id, chatroom_name, status, last_read_at
+		FROM chatroom_members
+		WHERE user_id = #{userId} AND status = 'JOIN'
+	</select>
+	
+	<!-- 유저id로 채팅방 찾아들어갈때 -->
+	<select id="findRoomById"
+			parameterType="int"
+			resultMap="ChatroomMembers">
+		SELECT chatroom_id, user_id, chatroom_name, status, last_read_at
+		FROM chatroom_members 
+		WHERE chatroom_id = #{chatroomId} AND user_id = #{userId}
+	</select>
+	
+	<!-- 중복검사용 리스트 -->
+	<select id="findRoomByUserIdByChatroomId"
+			parameterType="int"
+			resultMap="ChatroomMembers">
+		SELECT s.chatroom_id, s.user_id
+		FROM chatroom_members s
+		WHERE s.status = 'JOIN' AND s.chatroom_id IN (
+												SELECT f.chatroom_id
+												FROM chatroom_members f
+								                WHERE f.user_id = #{userId});
+	</select>
+	
+	<!-- 채팅종료시 시간갱신 -->
+	<update id="lastReadAtUpdate"
+	 		parameterType="com.warr.ferr.model.ChatroomMembers">
+	 	UPDATE chatroom_members
+	 	SET last_read_at = CURRENT_TIMESTAMP
+		WHERE chatroom_id = #{chatroomId} AND user_id = #{userId}
+	 </update>
+	
+	<!-- chatroomId 생성 -->
+	<insert id="createRoomId"
+			parameterType="com.warr.ferr.model.ChatroomMembers"
+			useGeneratedKeys="true"
+			keyColumn="chatroom_id"
+			keyProperty="chatroomId">
+		INSERT INTO chatrooms (name) VALUE (#{name})	
+	</insert>
+	
+	<!-- chatroom members 구성원 -->
+	<insert id="createRoom" parameterType="java.util.List">
+	    INSERT INTO chatroom_members 
+	    	(chatroom_id, 
+	    	chatroom_name, 
+	    	user_id, 
+	    	status,
+	    	last_read_at)
+	    VALUES
+	    <foreach collection="chatroomMembers" item="chatroomMember" separator=",">
+	        (#{chatroomMember.chatroomId}, 
+	        #{chatroomMember.chatroomName}, 
+	        #{chatroomMember.userId}, 
+	        'JOIN',
+	        CURRENT_TIMESTAMP)
+	    </foreach>
+	</insert>
+		
+	<!-- 제목 수정 -->
+	<update id="roomNameUpdate"
+			parameterType="com.warr.ferr.model.ChatroomMembers">
+		UPDATE chatroom_members
+		SET chatroom_name = #{chatroomName}
+		WHERE chatroom_id = #{chatroomId} AND user_id = #{userId}
+	</update>
+	
+	<!-- 그룹채팅에서 방나가기 -->
+	<update id="chatroomLeave"
+			parameterType="com.warr.ferr.model.ChatroomMembers">
+		UPDATE chatroom_members
+		SET status = 'LEAVE'
+		WHERE chatroom_id = #{chatroomId} AND user_id = #{userId} 	
+	</update>
+	
+	<!-- 채팅방에 소속된 멤버 리스트 탐색 -->
+	<select id="findUserByRoomId"
+			resultMap="ChatroomMembers">
+		SELECT chatroom_id, user_id, chatroom_name, status, last_read_at
+		FROM chatroom_members
+		WHERE chatroom_id = #{chatroomId}
+	</select>
+	
+	<!-- 채팅방에서 떠난 유저 찾기 -->
+	<select id="findLeaveMember"
+			resultMap="ChatroomMembers">
+		SELECT chatroom_id, user_id, chatroom_name, status, last_read_at
+		FROM chatroom_members
+		WHERE chatroom_id = #{chatroomId} AND status = 'LEAVE'
+	</select>
+	
+	<update id="reJoinMember"
+			parameterType="int">
+		UPDATE chatroom_members
+		SET status = 'JOIN'
+		WHERE chatroom_id = #{chatroomId} AND user_id = #{userId}
+	</update>
+	
+	<insert id="addChatMember"
+			parameterType="int">
+		INSERT INTO chatroom_members
+			(chatroom_id, 
+	    	chatroom_name, 
+	    	user_id, 
+	    	status,
+	    	last_read_at)
+	    VALUES
+	    	(#{chatroomId}, 
+	        '그룹채팅', 
+	        #{userId}, 
+	        'JOIN',
+	        CURRENT_TIMESTAMP)
+	</insert>
+	
+    <!-- 기존의 채팅방유저인지 확인할때 사용 -->    
+    <select id="leaveMemberByUserId"
+            parameterType="int">
+        SELECT COUNT(*) AS row_count
+        FROM chatroom_members
+        WHERE chatroom_id = #{chatroomId} AND status = 'LEAVE' AND user_id = #{userId}
+    </select>
+	
+	<!-- 채팅룸id 삭제 -->
+	<!-- <delete id="deleteRoom" parameterType="java.util.List">
+	    DELETE FROM chatrooms
+	    WHERE chatroom_id IN (
+	        SELECT chatroom_id
+	        FROM chatroom_members
+	        WHERE chatroom_id IN
+	        <foreach collection="chatroomIdList" item="chatroomId" open="(" separator="," close=")">
+	            #{chatroomId}
+	        </foreach>
+	        AND status = 'LEAVE'
+	    )
+	</delete> -->
+	<!-- 그룹방 자체를 삭제 -->
+	<!-- <delete id="deleteRoomUser"
+			parameterType="com.warr.ferr.model.Chatrooms">
+		DELETE FROM chatroom_members
+		WHERE chatroom_id = #{chatroomId} AND status = 'LEAVE'
+	</delete> -->
+	
+	
+</mapper>
